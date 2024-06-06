@@ -1,0 +1,97 @@
+#include <stdio.h>
+
+#include <stdlib.h>
+#include <signal.h>
+#include <unistd.h>
+#include <math.h>
+
+#define OBRADA_DATOTEKA "obrada.txt"
+#define STATUS_DATOTEKA "status.txt"
+
+int broj = 0;
+
+// Funkcija za obradu signala SIGUSR1
+void handle_usr1(int sig) {
+    printf("Trenutni broj u obradi: %d\n", broj);
+}
+
+// Funkcija za obradu signala SIGTERM
+void handle_term(int sig) {
+    FILE *status_file = fopen(STATUS_DATOTEKA, "w");
+    if (status_file != NULL) {
+        fprintf(status_file, "%d", broj);
+        fclose(status_file);
+    }
+    printf("Završavanje programa...\n");
+    exit(0);
+}
+
+// Funkcija za obradu signala SIGINT
+void handle_int(int sig) {
+    printf("Prekid programa...\n");
+    exit(0);
+}
+
+// Simulacija dugotrajnog posla
+int obrada(int broj) {
+    return broj * broj; // Primjer: Izračunava kvadrat broja
+}
+
+int main() {
+    signal(SIGUSR1, handle_usr1);
+    signal(SIGTERM, handle_term);
+    signal(SIGINT, handle_int);
+
+    // Provjera i inicijalizacija status.txt ako ne postoji
+    FILE *status_file = fopen(STATUS_DATOTEKA, "r");
+    if (status_file != NULL) {
+        fscanf(status_file, "%d", &broj);
+        fclose(status_file);
+    } else {
+        perror("Error opening status file for reading");
+        exit(EXIT_FAILURE);
+    }
+
+    // Ako je broj 0, to znači da je prethodna obrada prekinuta, pa nastavljamo od zadnjeg broja
+    if (broj == 0) {
+        FILE *obrada_file = fopen(OBRADA_DATOTEKA, "r");
+        if (obrada_file != NULL) {
+            int temp;
+            while (fscanf(obrada_file, "%d", &temp) != EOF) {
+                broj = temp;
+            }
+            fclose(obrada_file);
+            broj = (int)sqrt(broj); // Izračunavanje korijena zadnjeg broja
+        } else {
+            perror("Error opening obrada file for reading");
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    while (1) {
+        // Zapisivanje trenutnog broja u status.txt datoteku
+        status_file = fopen(STATUS_DATOTEKA, "w");
+        if (status_file != NULL) {
+            fprintf(status_file, "%d", broj);
+            fclose(status_file);
+        } else {
+            perror("Error opening status file for writing");
+            exit(EXIT_FAILURE);
+        }
+
+        broj++;
+        int rezultat = obrada(broj);
+        FILE *obrada_file = fopen(OBRADA_DATOTEKA, "a");
+        if (obrada_file != NULL) {
+            fprintf(obrada_file, "%d\n", rezultat);
+            fclose(obrada_file);
+        } else {
+            perror("Error opening obrada file for appending");
+            exit(EXIT_FAILURE);
+        }
+        printf("Obradili smo broj: %d\n", broj);
+        sleep(5); // Odgoda od 5 sekundi
+    }
+
+    return 0;
+}

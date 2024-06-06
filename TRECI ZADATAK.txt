@@ -1,0 +1,100 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+#include <unistd.h>
+
+#define BROJ_STOLOVA 5 // Broj stolova u restoranu
+
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+int stolovi[BROJ_STOLOVA] = {0}; // 0 znači slobodan stol, inače je rezerviran
+int ukupno_stolova = BROJ_STOLOVA;
+
+int ULAZ[BROJ_STOLOVA] = {0}; // ulazna vrata za Lamportov algoritam
+int BROJ[BROJ_STOLOVA] = {0}; // brojevi dretvi za Lamportov algoritam
+
+void udji_u_kriticni_odsječak(int i) {
+    ULAZ[i] = 1;
+    BROJ[i] = 1 + BROJ[0];
+    ULAZ[i] = 0;
+    for (int j = 0; j < BROJ_STOLOVA; j++) {
+        while (ULAZ[j] != 0)
+            ; // čekaj na ulazak u kritični odsječak
+        while (BROJ[j] != 0 && (BROJ[j] < BROJ[i] || (BROJ[j] == BROJ[i] && j < i)))
+            ; // čekaj dok ne postaneš sljedeći u redu
+    }
+}
+
+void izadji_iz_kriticnog_odsječka(int i) {
+    BROJ[i] = 0;
+}
+
+void *rezerviraj_stol(void *thread_id) {
+    long tid = (long)thread_id;
+    while (1) {
+        sleep(1); // čekanje jednu sekundu
+        
+        udji_u_kriticni_odsječak(tid - 1); // uđi u kritični odsječak
+        
+        // Provjeri ima li slobodnih stolova
+        int slobodni_stolovi = 0;
+        for (int i = 0; i < BROJ_STOLOVA; i++) {
+            if (stolovi[i] == 0) {
+                slobodni_stolovi++;
+            }
+        }
+        
+        if (slobodni_stolovi == 0) {
+            izadji_iz_kriticnog_odsječka(tid - 1); // izađi iz kritičnog odsječka
+            break;
+        }
+        
+        // Odaberi nasumični slobodan stol
+        int indeks_stola = rand() % BROJ_STOLOVA;
+        while (stolovi[indeks_stola] != 0) {
+            indeks_stola = rand() % BROJ_STOLOVA;
+        }
+        
+        // Rezerviraj odabrani stol
+        stolovi[indeks_stola] = tid;
+        
+        // Ispis trenutnog stanja stolova
+        printf("Dretva %ld rezervira stol %d\n", tid, indeks_stola + 1);
+        printf("Trenutno stanje stolova:\n");
+        for (int i = 0; i < BROJ_STOLOVA; i++) {
+            if (stolovi[i] == 0) {
+                printf("Stol %d: Slobodan\n", i + 1);
+            } else {
+                printf("Stol %d: Rezerviran od strane Dretve %d\n", i + 1, stolovi[i]);
+            }
+        }
+        printf("\n");
+        
+        izadji_iz_kriticnog_odsječka(tid - 1); // izađi iz kritičnog odsječka
+    }
+    pthread_exit(NULL);
+}
+
+int main(int argc, char *argv[]) {
+    if (argc != 2) {
+        printf("Upotreba: %s <broj_dretvi>\n", argv[0]);
+        return 1;
+    }
+    
+    int broj_dretvi = atoi(argv[1]);
+    
+    pthread_t dretve[broj_dretvi];
+    
+    // Stvaranje dretvi
+    for (long i = 0; i < broj_dretvi; i++) {
+        pthread_create(&dretve[i], NULL, rezerviraj_stol, (void *)i + 1);
+    }
+    
+    // Čekanje završetka dretvi
+    for (int i = 0; i < broj_dretvi; i++) {
+        pthread_join(dretve[i], NULL);
+    }
+    
+    printf("Sve dretve su završile. Svi stolovi su rezervirani.\n");
+    
+    return 0;
+}
